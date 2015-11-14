@@ -1,0 +1,5 @@
+PKG_CPPFLAGS = -I/usr/local/include/igraph
+
+PKG_LIBS = -L/usr/local/lib -ligraph -lm
+
+

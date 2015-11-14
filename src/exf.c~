@@ -1,0 +1,860 @@
+int igraph_i_calc_cluster_degree(const igraph_t *graph,igraph_vector_t cluster, igraph_neimode_t mode)//check if graph is direcgted connected is not like that
+{
+	igraph_vector_t temp;
+	igraph_integer_t result=0;
+
+	int i,k;
+	for(i=0;i<igraph_vector_size(&cluster);i++){
+		igraph_integer_t minus=0;
+		igraph_vector_init(&temp,0);
+		igraph_neighbors(graph,&temp,VECTOR(cluster)[i],mode);
+		for(k=0;k<igraph_vector_size(&cluster);k++){
+			if(k!=i){
+				igraph_bool_t connected;
+				igraph_are_connected(graph,VECTOR(cluster)[k],VECTOR(cluster)[i],&connected);
+				if(connected)
+					minus++;
+			}
+		}
+		result += (igraph_vector_size(&temp)-minus);
+	}
+	return result;
+}
+
+int igraph_expectedforce(const igraph_t *graph, igraph_vector_t *ans,
+					igraph_vs_t vids, igraph_bool_t directed,  igraph_neimode_t mode) {
+
+
+	igraph_vector_t FIvalues;
+	igraph_integer_t totalFI;
+	igraph_vector_ptr_t neigh1,neigh2,nodes;
+	igraph_vit_t vit;
+	igraph_integer_t clustdeg;
+	igraph_vector_t *node=malloc(sizeof(igraph_vector_t)),*tmp1=node,*tmp2=node,tempdeg1st,cluster;
+	igraph_bool_t simple;
+
+	IGRAPH_CHECK(igraph_vit_create(graph, vids, &vit));
+	IGRAPH_FINALLY(igraph_vit_destroy, &vit);
+	IGRAPH_CHECK(igraph_vector_init(node,0));
+	IGRAPH_CHECK(igraph_vector_init(tmp1,0));
+	IGRAPH_CHECK(igraph_vector_init(tmp2,0));
+	IGRAPH_CHECK(igraph_vector_init(&tempdeg1st,0));
+	IGRAPH_CHECK(igraph_vector_init(&cluster,0));
+
+	IGRAPH_CHECK(igraph_is_simple(graph, &simple));
+	if (!simple) {
+		IGRAPH_ERROR("Expected Force Works only with "
+			 "simple graphs", IGRAPH_EINVAL);
+	}
+
+	if(!mode){
+		if(directed && igraph_is_directed(graph))//user defined that directed=true when calling exf and graph is directed
+			mode = IGRAPH_OUT;
+		else
+			mode = IGRAPH_ALL;
+	}
+	else if(mode != IGRAPH_ALL){
+		if(!igraph_is_directed(graph)){
+			mode = IGRAPH_ALL;
+		}
+	}
+
+	if (mode != IGRAPH_OUT && mode != IGRAPH_IN && mode != IGRAPH_ALL) {
+		IGRAPH_ERROR("degree calculation failed", IGRAPH_EINVMODE);
+	  }
+
+	igraph_vector_ptr_init(&nodes, 0);
+	igraph_vector_ptr_init(&neigh1, 0);
+	igraph_vector_ptr_init(&neigh2, 0);
+
+
+	igraph_neighborhood(graph,&nodes,vids, 0, mode, 0);
+	igraph_neighborhood(graph,&neigh1,vids, 1, mode, 1);
+	igraph_neighborhood(graph,&neigh2,vids, 2, mode, 2);
+
+	long int i,j,k,h;
+
+
+	for(i=0;i<igraph_vector_ptr_size(&nodes);i++){ //for each node
+		igraph_vector_init(&FIvalues,0);
+		totalFI =0;
+
+
+		igraph_vector_init(&cluster,3);
+
+
+
+		node= VECTOR(nodes)[i];
+		tmp1= VECTOR(neigh1)[i];//dist1 neighbors
+		tmp2= VECTOR(neigh2)[i];//dist2 neighbors
+
+		VECTOR(cluster)[0]= VECTOR(*node)[0];
+
+		for(j=0;j<igraph_vector_size(tmp1);j++){
+
+
+			igraph_vector_init(&tempdeg1st,0);
+			igraph_neighbors(graph, &tempdeg1st, VECTOR(*tmp1)[j], mode);//neighbors of first member of cluster
+
+			VECTOR(cluster)[1]= VECTOR(*tmp1)[j];
+
+			for(h=j+1;h<igraph_vector_size(tmp1);h++){
+
+				VECTOR(cluster)[2]= VECTOR(*tmp1)[h];
+
+				clustdeg = igraph_i_calc_cluster_degree(graph,cluster,mode);
+
+				igraph_vector_push_back(&FIvalues,clustdeg);
+				totalFI+= clustdeg;
+				igraph_vector_push_back(&FIvalues,clustdeg);
+				totalFI+= clustdeg;
+
+				igraph_bool_t connected;
+				igraph_are_connected(graph,VECTOR(*tmp1)[j],VECTOR(*tmp1)[h],&connected);
+
+
+				if(connected){//they have an edge between each other
+					igraph_vector_push_back(&FIvalues,clustdeg);
+					totalFI+= clustdeg;
+					igraph_vector_push_back(&FIvalues,clustdeg);
+					totalFI+= clustdeg;
+				}
+			}
+
+			//distance2 neighbors:
+			for(h=0;h<igraph_vector_size(&tempdeg1st);h++){//neighbors of 1dists
+				for(k=0;k<igraph_vector_size(tmp2);k++){//2dist neighbors
+					if(VECTOR(tempdeg1st)[h] == VECTOR(*tmp2)[k]){//now calc degree of this cluster
+
+						VECTOR(cluster)[2]= VECTOR(*tmp2)[k];
+
+						clustdeg = igraph_i_calc_cluster_degree(graph,cluster,mode);
+
+
+						igraph_vector_push_back(&FIvalues,clustdeg);
+						totalFI+= clustdeg;
+
+					}//if
+				}
+			}
+
+
+			igraph_vector_destroy(&tempdeg1st);
+		}//for on 1st neibors
+
+		double normalizedFI,ExF=-1;
+		if(totalFI != 0){
+			ExF =0;
+			for(j=0;j<igraph_vector_size(&FIvalues);j++){
+				normalizedFI = (double)VECTOR(FIvalues)[j]/totalFI;
+				ExF -= (log(normalizedFI)*normalizedFI);
+			}
+		}
+
+		igraph_vector_push_back(ans,ExF);
+
+
+
+	}
+
+
+	igraph_vector_destroy(tmp1);
+	igraph_vector_destroy(tmp2);
+	igraph_vector_destroy(node);
+	igraph_vector_destroy(&cluster);
+	igraph_vector_destroy(&FIvalues);
+	igraph_vector_ptr_destroy(&neigh1);
+	igraph_vector_ptr_destroy(&neigh2);
+	igraph_vector_ptr_destroy(&nodes);
+	IGRAPH_FINALLY_CLEAN(8);
+
+	return 0;
+
+}
+
+int igraph_i_exf_onenode(const igraph_t *graph, igraph_real_t *ExF,igraph_integer_t node, igraph_vector_t *tmp1
+		, igraph_vector_t *tmp2){
+
+	igraph_vector_t FIvalues,tempdeg,v,tempdeg1st;
+	igraph_real_t totalFI;
+	igraph_integer_t clustdeg,cntminus,frstdeg,secdeg;
+	igraph_bool_t connected;
+	igraph_neimode_t mode = IGRAPH_ALL;
+
+
+	IGRAPH_CHECK(igraph_vector_init(&FIvalues,0));
+	IGRAPH_CHECK(igraph_vector_init(&v,0));
+	IGRAPH_CHECK(igraph_vector_init(&tempdeg,0));
+	IGRAPH_CHECK(igraph_vector_init(&tempdeg1st,0));
+	totalFI =0;
+
+	long int j,h,k;
+	for(j=0;j<igraph_vector_size(tmp1);j++){
+
+		igraph_vector_init(&tempdeg1st,0);
+		igraph_neighbors(graph, &tempdeg1st, VECTOR(*tmp1)[j], mode);//neighbors of first member of cluster
+
+		igraph_vector_init(&tempdeg,0);
+		igraph_vector_init(&v,1);
+		VECTOR(v)[0]=VECTOR(*tmp1)[j];
+		igraph_degree(graph,&tempdeg,igraph_vss_vector(&v),mode,IGRAPH_NO_LOOPS);
+		frstdeg = VECTOR(tempdeg)[0];
+
+		for(h=j+1;h<igraph_vector_size(tmp1);h++){
+
+			igraph_are_connected(graph,VECTOR(*tmp1)[j],VECTOR(*tmp1)[h],&connected);//2 1st neighs are connected
+
+//calculating 1st group cluster degree:
+			clustdeg =0;
+
+			//deg for the node:
+			cntminus= 2; //other 1st neighbors of node
+			clustdeg+= igraph_vector_size(tmp1)-cntminus;
+
+			//deg for 1st neighbor:
+			cntminus = 0;
+			cntminus++;//the node is neighbor with it
+
+			if(connected)
+				cntminus ++;
+
+			clustdeg += frstdeg-cntminus;
+
+			//deg for 2nd neighbor
+			igraph_vector_init(&tempdeg,0);
+			igraph_vector_init(&v,1);
+			VECTOR(v)[0]=VECTOR(*tmp1)[h];
+			igraph_degree(graph,&tempdeg,igraph_vss_vector(&v),mode,IGRAPH_NO_LOOPS);
+			secdeg = VECTOR(tempdeg)[0];
+			cntminus = 0;
+			cntminus++;//the node is neighbor with it
+
+			if(connected)
+				cntminus ++;
+
+			clustdeg += secdeg-cntminus;
+//finish calculating 1st group cluster degree
+
+			igraph_vector_push_back(&FIvalues,clustdeg);
+			totalFI+= clustdeg;
+			igraph_vector_push_back(&FIvalues,clustdeg);
+			totalFI+= clustdeg;
+
+			//if they have an edge between each other:
+			if(connected){
+				igraph_vector_push_back(&FIvalues,clustdeg);
+				totalFI+= clustdeg;
+				igraph_vector_push_back(&FIvalues,clustdeg);
+				totalFI+= clustdeg;
+			}
+
+		}
+
+
+		for(h=0;h<igraph_vector_size(&tempdeg1st);h++){//neighbors of 1dists
+			for(k=0;k<igraph_vector_size(tmp2);k++){//2dist neighbors
+				if(VECTOR(tempdeg1st)[h] == VECTOR(*tmp2)[k]){//now calc degree of this cluster
+
+//calculating 2nd group cluster degree:
+					clustdeg =0;
+
+					//deg for the node:
+					cntminus=1;// node is neibor with 1dist
+					clustdeg+= igraph_vector_size(tmp1)-cntminus;
+
+
+					//deg for 1st neighbor:
+					cntminus=2;//1dist neighbors is neibor with both 2 other nodes of cluster
+					clustdeg += frstdeg-cntminus;
+
+					//deg for 2nd neighbor:
+					igraph_vector_init(&tempdeg,0);
+					igraph_vector_init(&v,1);
+					VECTOR(v)[0]=VECTOR(*tmp2)[k];
+					igraph_degree(graph,&tempdeg,igraph_vss_vector(&v),mode,IGRAPH_NO_LOOPS);
+					secdeg = VECTOR(tempdeg)[0];
+					cntminus=1;////neigh with 1st
+
+					clustdeg += secdeg-cntminus;
+//finish calculating 2nd group cluster degree
+
+					igraph_vector_push_back(&FIvalues,clustdeg);
+					totalFI+= clustdeg;
+
+				}//if
+			}
+		}
+
+
+
+
+	}//for on 1st neibors
+
+
+	igraph_real_t normalizedFI;
+	*ExF=-1;
+	if(totalFI != 0){
+		*ExF = 0;
+		for(j=0;j<igraph_vector_size(&FIvalues);j++){
+			normalizedFI = (double)VECTOR(FIvalues)[j]/totalFI;
+			*ExF -= (log(normalizedFI)*normalizedFI);
+		}
+	}
+
+	igraph_vector_destroy(&tempdeg);
+	igraph_vector_destroy(&v);
+	igraph_vector_destroy(&tempdeg1st);
+	igraph_vector_destroy(&FIvalues);
+	IGRAPH_FINALLY_CLEAN(4);
+
+	return IGRAPH_SUCCESS;
+}
+
+
+int igraph_i_exf_onenode_directed(const igraph_t *graph, igraph_real_t *ExF,igraph_integer_t node, igraph_vector_t *tmp1
+		, igraph_vector_t *tmp2, igraph_neimode_t mode){
+
+	igraph_vector_t FIvalues,tempdeg,v,tempdeg1st;
+	igraph_integer_t totalFI;
+	igraph_integer_t clustdeg,cntminus,frstdeg,secdeg;
+	igraph_bool_t connected1to2,connected2to1,tmpconnection;
+
+
+	IGRAPH_CHECK(igraph_vector_init(&FIvalues,0));
+	IGRAPH_CHECK(igraph_vector_init(&v,0));
+	IGRAPH_CHECK(igraph_vector_init(&tempdeg,0));
+	IGRAPH_CHECK(igraph_vector_init(&tempdeg1st,0));
+	totalFI =0;
+
+	long int j,h,k;
+	for(j=0;j<igraph_vector_size(tmp1);j++){
+
+
+
+		igraph_vector_init(&tempdeg1st,0);
+		igraph_neighbors(graph, &tempdeg1st, VECTOR(*tmp1)[j], mode);//neighbors of first member of cluster
+
+		igraph_vector_init(&tempdeg,0);
+		igraph_vector_init(&v,1);
+		VECTOR(v)[0]=VECTOR(*tmp1)[j];
+		igraph_degree(graph,&tempdeg,igraph_vss_vector(&v),mode,IGRAPH_NO_LOOPS);
+		frstdeg = VECTOR(tempdeg)[0];
+
+		for(h=j+1;h<igraph_vector_size(tmp1);h++){
+
+			igraph_are_connected(graph,VECTOR(*tmp1)[j],VECTOR(*tmp1)[h],&connected1to2);//1st neigh ro 2nd
+			igraph_are_connected(graph,VECTOR(*tmp1)[h],VECTOR(*tmp1)[j],&connected2to1);//1st neigh ro 2nd
+//calculating 1st group cluster degree:
+			clustdeg =0;
+
+			//deg for the node:
+			cntminus= 2; //other 1st neighbors of node
+			clustdeg+= igraph_vector_size(tmp1)-cntminus;
+
+			//deg for 1st neighbor:
+			cntminus = 0;
+			if(mode==IGRAPH_OUT){
+				igraph_are_connected(graph,VECTOR(*tmp1)[j],node,&tmpconnection);
+				if(tmpconnection)
+					cntminus++;
+			}
+			else if(mode==IGRAPH_IN){
+				igraph_are_connected(graph,node,VECTOR(*tmp1)[j],&tmpconnection);
+				if(tmpconnection)
+					cntminus++;
+			}
+
+			if(mode==IGRAPH_OUT){
+				if(connected1to2)
+					cntminus++;
+			}
+			else if(mode == IGRAPH_IN)
+				if(connected2to1)
+					cntminus++;
+
+			clustdeg += frstdeg-cntminus;
+
+			//deg for 2nd neighbor
+			igraph_vector_init(&tempdeg,0);
+			igraph_vector_init(&v,1);
+			VECTOR(v)[0]=VECTOR(*tmp1)[h];
+			igraph_degree(graph,&tempdeg,igraph_vss_vector(&v),mode,IGRAPH_NO_LOOPS);
+			secdeg = VECTOR(tempdeg)[0];
+			cntminus = 0;
+			if(mode==IGRAPH_OUT){
+				igraph_are_connected(graph,VECTOR(*tmp1)[h],node,&tmpconnection);
+				if(tmpconnection)
+					cntminus++;
+			}
+			else if(mode==IGRAPH_IN){
+				igraph_are_connected(graph,node,VECTOR(*tmp1)[h],&tmpconnection);
+				if(tmpconnection)
+					cntminus++;
+			}
+
+			if(mode==IGRAPH_OUT){
+				if(connected2to1)
+					cntminus++;
+			}
+			else if(mode == IGRAPH_IN)
+				if(connected1to2)
+					cntminus++;
+			clustdeg += secdeg-cntminus;
+//finish calculating 1st group cluster degree
+
+			igraph_vector_push_back(&FIvalues,clustdeg);
+			totalFI+= clustdeg;
+			igraph_vector_push_back(&FIvalues,clustdeg);
+			totalFI+= clustdeg;
+
+			//if they have an edge between each other:
+			if(connected1to2){
+				igraph_vector_push_back(&FIvalues,clustdeg);
+				totalFI+= clustdeg;
+			}
+			if(connected2to1){
+				igraph_vector_push_back(&FIvalues,clustdeg);
+				totalFI+= clustdeg;
+			}
+
+		}
+
+
+
+		for(h=0;h<igraph_vector_size(&tempdeg1st);h++){//neighbors of 1dists
+			for(k=0;k<igraph_vector_size(tmp2);k++){//2dist neighbors
+				if(VECTOR(tempdeg1st)[h] == VECTOR(*tmp2)[k]){//now calc degree of this cluster
+
+//calculating 2nd group cluster degree:
+					clustdeg =0;
+
+					//deg for the node:
+					cntminus=1;// node is neibor with 1dist
+					clustdeg+= igraph_vector_size(tmp1)-cntminus;
+
+					//deg for 1st neighbor:
+					cntminus=1;//1dist neighbors is neibor with next node
+					if(mode==IGRAPH_OUT){
+						igraph_are_connected(graph,VECTOR(*tmp1)[j],node,&tmpconnection);
+						if(tmpconnection)
+							cntminus++;//edge to node
+					}
+					else if(mode==IGRAPH_IN){
+						igraph_are_connected(graph,node,VECTOR(*tmp1)[j],&tmpconnection);
+						if(tmpconnection)
+							cntminus++;//edge to node
+					}
+
+					clustdeg += frstdeg-cntminus;
+
+					//deg for 2nd neighbor:
+					igraph_vector_init(&tempdeg,0);
+					igraph_vector_init(&v,1);
+					VECTOR(v)[0]=VECTOR(*tmp2)[k];
+					igraph_degree(graph,&tempdeg,igraph_vss_vector(&v),mode,IGRAPH_NO_LOOPS);
+					secdeg = VECTOR(tempdeg)[0];
+					cntminus=0;
+					if(mode==IGRAPH_OUT){
+						igraph_are_connected(graph,VECTOR(*tmp2)[k],VECTOR(*tmp1)[j],&tmpconnection);
+						if(tmpconnection)
+							cntminus++;//edge to node
+					}
+					else if(mode==IGRAPH_IN){
+						igraph_are_connected(graph,VECTOR(*tmp1)[j],VECTOR(*tmp2)[k],&tmpconnection);
+						if(tmpconnection)
+							cntminus++;//edge to node
+					}
+
+					clustdeg += secdeg-cntminus;
+//finish calculating 2nd group cluster degree
+
+					igraph_vector_push_back(&FIvalues,clustdeg);
+					totalFI+= clustdeg;
+
+				}//if
+			}
+		}
+
+
+
+
+	}//for on 1st neibors
+
+
+	//printf("TOT:%d\n",totalFI);
+	igraph_real_t normalizedFI;
+	*ExF=-1;
+	if(totalFI != 0){
+		*ExF = 0;
+		for(j=0;j<igraph_vector_size(&FIvalues);j++){
+			normalizedFI = (double)VECTOR(FIvalues)[j]/totalFI;
+			*ExF -= (log(normalizedFI)*normalizedFI);
+		}
+	}
+
+	igraph_vector_destroy(&tempdeg);
+	igraph_vector_destroy(&v);
+	igraph_vector_destroy(&tempdeg1st);
+	igraph_vector_destroy(&FIvalues);
+	IGRAPH_FINALLY_CLEAN(4);
+
+	return IGRAPH_SUCCESS;
+}
+
+
+int igraph_i_exf_onenode_weighted(const igraph_t *graph, igraph_real_t *ExF,
+								igraph_integer_t node, igraph_vector_t *tmp1 ,
+								igraph_bool_t directed,
+								igraph_neimode_t mode,const igraph_vector_t *weights){
+	igraph_vector_t firsteids,seceids,pairs,feW,neighs,neighstemp,seW,wDegreeTemp,vids,FIvalues;
+	igraph_integer_t i,j;
+	igraph_integer_t eid;
+	igraph_real_t totalWF,totalWT,clustProb,feProb,clustFI,totalFI=0;//overflow is checked by assigning real ???
+	IGRAPH_CHECK(igraph_vector_init(&firsteids,0));
+	IGRAPH_CHECK(igraph_vector_init(&pairs,0));
+	IGRAPH_CHECK(igraph_vector_init(&feW,0));
+	IGRAPH_CHECK(igraph_vector_init(&FIvalues,0));
+	IGRAPH_CHECK(igraph_vector_init(&seceids,0));
+	IGRAPH_CHECK(igraph_vector_init(&seW,0));
+	IGRAPH_CHECK(igraph_vector_init(&neighs,0));
+	IGRAPH_CHECK(igraph_vector_init(&neighstemp,0));
+	IGRAPH_CHECK(igraph_vector_init(&wDegreeTemp,0));
+	IGRAPH_CHECK(igraph_vector_init(&vids,0));
+
+	for(i=0;i<igraph_vector_size(tmp1);i++){
+		igraph_vector_push_back(&pairs,node);
+		igraph_vector_push_back(&pairs,VECTOR(*tmp1)[i]);
+
+	}
+	igraph_get_eids(graph,&firsteids,&pairs,0,0,0);
+	totalWF=0;
+	for(i=0;i<igraph_vector_size(&firsteids);i++){
+		totalWF+= VECTOR(*weights)[(int)VECTOR(firsteids)[i]];
+		igraph_vector_push_back(&feW,VECTOR(*weights)[(int)VECTOR(firsteids)[i]]);
+	}
+
+	for(i=0;i<igraph_vector_size(tmp1);i++){//on 1st neighbors
+		feProb= VECTOR(feW)[i]/totalWF;
+		totalWT= totalWF-VECTOR(feW)[i];
+		igraph_vector_init(&neighs,0);
+		igraph_vector_init(&neighstemp,0);
+		igraph_neighbors(graph,&neighstemp,VECTOR(*tmp1)[i],mode);
+
+		IGRAPH_CHECK(igraph_vector_init(&pairs,0));
+		IGRAPH_CHECK(igraph_vector_init(&seceids,0));
+		IGRAPH_CHECK(igraph_vector_init(&seW,0));
+
+		for(j=0;j<igraph_vector_size(&neighstemp);j++){
+			if(VECTOR(neighstemp)[j]==node)
+				continue;
+			igraph_vector_push_back(&pairs,VECTOR(*tmp1)[i]);
+			igraph_vector_push_back(&pairs,VECTOR(neighstemp)[j]);
+			igraph_vector_push_back(&neighs,VECTOR(neighstemp)[j]);
+		}
+		igraph_get_eids(graph,&seceids,&pairs,0,0,0);
+		for(j=0;j<igraph_vector_size(&seceids);j++){
+			totalWT+= VECTOR(*weights)[(int)VECTOR(seceids)[j]];
+			igraph_vector_push_back(&seW,VECTOR(*weights)[(int)VECTOR(seceids)[j]]);
+		}
+
+		for(j=0;j<igraph_vector_size(tmp1);j++){//other first neighbors
+			if(i==j)	continue;
+			clustProb= feProb*(VECTOR(feW)[j]/totalWT);
+			clustFI = totalWF-VECTOR(feW)[i]-VECTOR(feW)[j];//nodes neighbors minus 2 selected
+			IGRAPH_CHECK(igraph_vector_init(&wDegreeTemp,0));
+			IGRAPH_CHECK(igraph_vector_init(&vids,2));
+			VECTOR(vids)[0]= VECTOR(*tmp1)[i];
+			VECTOR(vids)[1]= VECTOR(*tmp1)[j];
+			igraph_strength(graph,&wDegreeTemp,igraph_vss_vector(&vids),mode,IGRAPH_NO_LOOPS,weights);
+			igraph_real_t cntminus=0;
+			cntminus += VECTOR(feW)[i];
+			cntminus += VECTOR(feW)[j];
+			igraph_get_eid(graph,&eid,VECTOR(*tmp1)[i],VECTOR(*tmp1)[j],directed,0);
+			if(eid!=-1){
+				cntminus += VECTOR(*weights)[eid];
+				cntminus += VECTOR(*weights)[eid];
+			}
+			clustFI += (VECTOR(wDegreeTemp)[0]+VECTOR(wDegreeTemp)[1]-cntminus);
+			igraph_vector_push_back(&FIvalues,clustProb*clustFI);
+			totalFI+= (clustProb*clustFI);
+		}//end for other 1st neighbors
+
+		for(j=0;j<igraph_vector_size(&neighs);j++){//second neighbors
+			if(VECTOR(neighs)[j] ==node)	continue;
+			clustProb= feProb*(VECTOR(seW)[j]/totalWT);
+			clustFI = totalWF-VECTOR(feW)[i];//nodes neighbors minus 1st neigh
+			igraph_get_eid(graph,&eid,VECTOR(neighs)[j],node,directed,0);
+			if(eid!=-1)	clustFI -= VECTOR(*weights)[eid];//2nd nei is neighbor with node
+
+
+			IGRAPH_CHECK(igraph_vector_init(&wDegreeTemp,0));
+			IGRAPH_CHECK(igraph_vector_init(&vids,2));
+			VECTOR(vids)[0]= VECTOR(*tmp1)[i];//badan inja o bala biroon borde she
+			VECTOR(vids)[1]= VECTOR(neighs)[j];
+			igraph_strength(graph,&wDegreeTemp,igraph_vss_vector(&vids),mode,IGRAPH_NO_LOOPS,weights);
+			igraph_real_t cntminus=0;
+			cntminus+= VECTOR(feW)[i];
+			cntminus+= VECTOR(seW)[j];
+			cntminus+= VECTOR(seW)[j];
+			if(eid!=-1)	cntminus += VECTOR(*weights)[eid];//2nd nei is neighbor with node
+			clustFI += (VECTOR(wDegreeTemp)[0]+VECTOR(wDegreeTemp)[1]-cntminus);
+			igraph_vector_push_back(&FIvalues,clustProb*clustFI);
+			totalFI+= (clustProb*clustFI);
+		}
+
+	}//end for 1st neigh
+
+	//printf("total:%g\n",totalFI);
+	igraph_real_t normalizedFI;
+	*ExF=-1;
+	if(totalFI != 0){
+		*ExF = 0;
+		for(j=0;j<igraph_vector_size(&FIvalues);j++){
+			normalizedFI = VECTOR(FIvalues)[j]/totalFI;
+			*ExF -= (log(normalizedFI)*normalizedFI);
+		}
+	}
+
+
+	igraph_vector_destroy(&firsteids);
+	igraph_vector_destroy(&seceids);
+	igraph_vector_destroy(&pairs);
+	igraph_vector_destroy(&neighs);
+	igraph_vector_destroy(&neighstemp);
+	igraph_vector_destroy(&feW);
+	igraph_vector_destroy(&seW);
+	igraph_vector_destroy(&wDegreeTemp);
+	igraph_vector_destroy(&vids);
+	igraph_vector_destroy(&FIvalues);
+	IGRAPH_FINALLY_CLEAN(10);
+
+	return IGRAPH_SUCCESS;
+}
+
+/**
+ * \function igraph_expectedforce(_opt)
+ * \brief Main function for calculating the Expected Force of one or more vertices.
+ *
+ * </para><para>
+ * The Expected Force (ExF) of a node measures its relevance to spreading processes on
+ * the graph by summarizing the size, connectedness, and diveristy in the node's two
+ * and three hop neighborhoods. More formally, the ExF is the (quasi) expected value of
+ * the force of infection (FoI) in the network after two transmission events (without
+ * recovery) in an epidemic seeded from the node into an otherwise fully susceptilble
+ * network. The expectation is calculated using the entropy of the distribution of
+ * possible FoI values, after normalization.
+ * </para><para>
+ * Since the distribution of FoI values is also well defined for directed and weighted
+ * graphs, the definition naturally extends to such cases. Transmission in directed
+ * graphs can be modeled either as following in edges or out edges. In weighted graphs,
+ * edge weights are assumed to correspond to transmission rates along the given edge.
+ * Thus all weights must be strictly positive. An extension to non-simple graphs (graphs
+ * with multiple or loop edges) is less obvious, thus not implemented. One could, however,
+ * represent multiple edges linking the same nodes as a single weighted edge.
+ * </para><para>
+ * This function can be called on the entire graph or on a subset of the verticies. The ExF
+ * is computed independently for each node. This allows substantial speed-up via on-the-fly
+ * computation or via parallelism. Caching of results is not yet implemented and is thus up
+ * to the user.
+ * </para><para>
+ * The algorithm has time complexity O(n_1^2 * n_2) where n_1 and n_2 are the number of
+ * neighbors in the first and second geodisc of the node. For most nodes, this is quite
+ * fast. For hubs in scale-free networks, however, it can be slow. We somewhat arbitrarily
+ * define hubs as nodes whose degree is greater than 0.6*max(degree(graph)). The ExF of
+ * such nodes is (except possibly in some pathelogical examples) greater than the remaining
+ * network nodes, typically 1.3 times the ExF of the highest non-hub node. To avoid confusion
+ * in the outputs, however, this implementation (if requested to skip computation for hubs)
+ * returns the degree of the node. This creates easy to identify outliers.
+ * </para><para>
+ * questions/comments to: expectedforce@mpi-inf.mpg.de
+ *
+ * Citation information
+ * </para>
+ * \param graph The graph object.
+ * \param res Vector. The results of the computation will be stored/returned here.
+ * \param vids Vector. The vertices for which the expected force will be calculated.
+ * \param directed Logical, if true directed paths will be considered
+ *        for directed graphs. It is ignored for undirected graphs.
+ * \param mode Defines the direction of transmission for calculating the expected
+ *        force. Valid modes are:
+ *        \c IGRAPH_OUT, out-degree (transmission flows from source to target)
+ *        \c IGRAPH_IN, in-degree (transmission flows from target to source)
+ *        \c IGRAPH_ALL, total degree (transmission flows both ways along an edge).
+ *        This parameter is considered as IGRAPH_ALL for undirected graphs and defaults
+ *        to IGRAPH_OUT for directed graphs.
+ * \param weights An optional vector containing edge weights for calculating weighted
+ *        expected force. All weights must be strictly positive. Supply a null pointer
+ *        for unweighted expectedforce.
+ * \param calc_hubs Logical, True by default. If False, the computation of hub expected
+ *        force is skipped, and the function returns node degree for hubs. Hubs are defined
+ *        as nodes with degree > 0.6* max(degree(graph)).
+ * \return Error code:
+ *        \c IGRAPH_ENOMEM, not enough memory for temporary data.
+ *        \c IGRAPH_EINVVID, invalid vertex id passed in
+ *        \c IGRAPH_EINVAL, invalid weight vector passed in, or invalid graph structure
+ *               (i.e. graph is not a simple graph)
+ *        \c IGRAPH_EINVMODE, invalid mode passed in
+ *        \p vids.
+ *
+ * Time complexity: Node, not graph based. For each node, complexity is n_1^2 * n_2, where
+ * n_1 is the number of neighbors at distance one and n_2 the number at distance two.
+ *
+ * \example examples/simple/igraph_expectedforce.c
+ */
+/**
+ * This function performs a set of sanity checks on the input graph, vertices, and arguments.
+ * Based on these, it then calls the relevant version of igraph_i_exf_onenode for each
+ * requested vertex. Relevant versions are: igraph_i_exf_onenode, igraph_i_exf_onenode_directed,
+ * or igraph_i_exf_onenode_weighted.
+ */
+int igraph_expectedforce_opt(const igraph_t *graph, igraph_vector_t *ans,
+							igraph_vs_t vids, igraph_bool_t directed,
+							igraph_neimode_t mode, const igraph_vector_t *weights,
+							igraph_bool_t calc_hub) {
+
+	igraph_vector_ptr_t neigh1,neigh2,nodes;
+	igraph_vit_t vit;
+	igraph_t temp_graph;
+	igraph_vector_t *node=malloc(sizeof(igraph_vector_t)),*tmp1=node,*tmp2=node,degrees_cache;
+	igraph_real_t ExF;
+	igraph_bool_t simple;
+	igraph_real_t max_degree;
+	igraph_integer_t no_of_edges=(igraph_integer_t) igraph_ecount(graph);
+
+
+
+	IGRAPH_CHECK(igraph_is_simple(graph, &simple));
+	if (!simple) {
+		IGRAPH_ERROR("Expected Force Works only with "
+			 "simple graphs", IGRAPH_EINVAL);
+	}
+
+	if (weights && igraph_vector_size(weights) != no_of_edges) {
+		IGRAPH_ERROR("Weight vector length does not match", IGRAPH_EINVAL);
+	}
+
+	if (weights && igraph_vector_min(weights) <= 0) {
+		IGRAPH_ERROR("Weight vector must be positive", IGRAPH_EINVAL);
+	}
+
+
+	IGRAPH_CHECK(igraph_vit_create(graph, vids, &vit));
+	IGRAPH_FINALLY(igraph_vit_destroy, &vit);
+
+
+	IGRAPH_CHECK(igraph_vector_ptr_init(&nodes, 0));
+	IGRAPH_CHECK(igraph_vector_ptr_init(&neigh1, 0));
+	IGRAPH_CHECK(igraph_vector_ptr_init(&neigh2, 0));
+	IGRAPH_CHECK(igraph_vector_init(node,0));
+	IGRAPH_CHECK(igraph_vector_init(tmp1,0));
+	IGRAPH_CHECK(igraph_vector_init(tmp2,0));
+	IGRAPH_CHECK(igraph_vector_init(&degrees_cache,0));
+
+
+
+	if(!mode){
+		if(directed && igraph_is_directed(graph))//user defined that directed=true when calling exf and graph is directed
+			mode = IGRAPH_OUT;
+		else
+			mode = IGRAPH_ALL;
+	}
+	else if(mode != IGRAPH_ALL){
+		if(!igraph_is_directed(graph)){
+			mode = IGRAPH_ALL;
+		}
+	}
+	if(weights)
+		mode = IGRAPH_ALL; ///if weight we want to consider undirected graph now
+
+	//other cases mode stays as user defined
+
+	if (mode != IGRAPH_OUT && mode != IGRAPH_IN && mode != IGRAPH_ALL) {
+	    IGRAPH_ERROR("degree calculation failed", IGRAPH_EINVMODE);
+	}
+
+	igraph_copy(&temp_graph,graph);
+	if(mode == IGRAPH_ALL && igraph_is_directed(graph))
+	{
+		igraph_to_undirected(&temp_graph,IGRAPH_TO_UNDIRECTED_COLLAPSE, 0);
+	}
+
+
+
+	igraph_neighborhood(&temp_graph,&nodes,vids, 0, mode, 0);
+	igraph_neighborhood(&temp_graph,&neigh1,vids, 1, mode, 1);
+
+	long int i;
+	if (weights) {
+		igraph_strength(graph,&degrees_cache,igraph_vss_all(),mode,IGRAPH_NO_LOOPS,weights);
+		max_degree = igraph_vector_max(&degrees_cache);
+		for(i=0;i<igraph_vector_ptr_size(&nodes);i++){ //for each node
+			node = VECTOR(nodes)[i];
+			if(!calc_hub && VECTOR(degrees_cache)[(int)VECTOR(*node)[0]] > (0.6*max_degree) ){
+				igraph_vector_push_back(ans,VECTOR(degrees_cache)[(int)VECTOR(*node)[0]]);//for now
+			}
+			else{
+
+				tmp1= VECTOR(neigh1)[i];
+				igraph_i_exf_onenode_weighted(&temp_graph,&ExF,VECTOR(*node)[0] ,tmp1,directed,mode,weights);
+				igraph_vector_push_back(ans,ExF);
+			}
+		}
+	}
+	else{
+		igraph_neighborhood(&temp_graph,&neigh2,vids, 2, mode, 2);
+		igraph_degree(graph,&degrees_cache,igraph_vss_all(),mode,IGRAPH_NO_LOOPS);
+		max_degree = igraph_vector_max(&degrees_cache);
+		if(mode == IGRAPH_ALL){
+			for(i=0;i<igraph_vector_ptr_size(&nodes);i++){ //for each node
+				node = VECTOR(nodes)[i];
+
+				if(!calc_hub && VECTOR(degrees_cache)[(int)VECTOR(*node)[0]] > (0.6*max_degree) ){
+					igraph_vector_push_back(ans,VECTOR(degrees_cache)[(int)VECTOR(*node)[0]]);//for now
+				}
+				else{
+					tmp1= VECTOR(neigh1)[i];
+					tmp2= VECTOR(neigh2)[i];
+
+					igraph_i_exf_onenode(&temp_graph,&ExF,VECTOR(*node)[0] ,tmp1,tmp2);
+
+					igraph_vector_push_back(ans,ExF);
+				}
+
+			}
+		}
+		else{
+			for(i=0;i<igraph_vector_ptr_size(&nodes);i++){ //for each node
+				node = VECTOR(nodes)[i];
+
+				if(!calc_hub && VECTOR(degrees_cache)[(int)VECTOR(*node)[0]] > (0.6*max_degree) ){
+					igraph_vector_push_back(ans,VECTOR(degrees_cache)[(int)VECTOR(*node)[0]]);//for now
+				}
+				else{
+					tmp1= VECTOR(neigh1)[i];
+					tmp2= VECTOR(neigh2)[i];
+
+					igraph_i_exf_onenode_directed(&temp_graph,&ExF,VECTOR(*node)[0] ,tmp1,tmp2,mode);
+
+					igraph_vector_push_back(ans,ExF);
+				}
+
+			}
+		}
+	}
+
+	
+	igraph_vector_destroy(node);
+	igraph_vector_destroy(tmp1);
+	igraph_vector_destroy(tmp2);
+	igraph_vector_destroy(&degrees_cache);
+	igraph_vit_destroy(&vit);
+	igraph_vector_ptr_destroy(&nodes);
+	igraph_vector_ptr_destroy(&neigh1);
+	igraph_vector_ptr_destroy(&neigh2);
+	igraph_destroy(&temp_graph);
+	IGRAPH_FINALLY_CLEAN(9);
+
+	return IGRAPH_SUCCESS;
+
+}
+
