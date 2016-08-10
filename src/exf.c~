@@ -1,3 +1,105 @@
+#include <igraph.h>
+
+int exf_igraph_neighborhood(const igraph_t *graph, igraph_vector_ptr_t *res,
+			igraph_vs_t vids, igraph_integer_t order,
+			igraph_neimode_t mode, igraph_integer_t mindist) {
+  
+  long int no_of_nodes=igraph_vcount(graph);
+  igraph_dqueue_t q;
+  igraph_vit_t vit;
+  long int i, j;
+  long int *added;
+  igraph_vector_t neis;
+  igraph_vector_t tmp;
+  igraph_vector_t *newv;
+
+  if (order < 0) {
+    IGRAPH_ERROR("Negative order in neighborhood size", IGRAPH_EINVAL);
+  }
+  
+  if (mindist < 0 || mindist > order) {
+    IGRAPH_ERROR("Minimum distance should be between zero and order",
+		 IGRAPH_EINVAL);
+  }
+
+  added=igraph_Calloc(no_of_nodes, long int);
+  if (added==0) {
+    IGRAPH_ERROR("Cannot calculate neighborhood size", IGRAPH_ENOMEM);
+  }
+  IGRAPH_FINALLY(igraph_free, added);
+  IGRAPH_DQUEUE_INIT_FINALLY(&q, 100);
+  IGRAPH_CHECK(igraph_vit_create(graph, vids, &vit));
+  IGRAPH_FINALLY(igraph_vit_destroy, &vit);
+  IGRAPH_VECTOR_INIT_FINALLY(&neis, 0);
+  IGRAPH_VECTOR_INIT_FINALLY(&tmp, 0);
+  IGRAPH_CHECK(igraph_vector_ptr_resize(res, IGRAPH_VIT_SIZE(vit)));
+  
+  for (i=0; !IGRAPH_VIT_END(vit); IGRAPH_VIT_NEXT(vit), i++) {
+    long int node=IGRAPH_VIT_GET(vit);
+    added[node]=i+1;
+    igraph_vector_clear(&tmp);
+    if (mindist == 0) { IGRAPH_CHECK(igraph_vector_push_back(&tmp, node)); }
+    if (order > 0) {
+      igraph_dqueue_push(&q, node);
+      igraph_dqueue_push(&q, 0);
+    }
+
+    while (!igraph_dqueue_empty(&q)) {
+      long int actnode=(long int) igraph_dqueue_pop(&q);
+      long int actdist=(long int) igraph_dqueue_pop(&q);
+      long int n;
+      igraph_neighbors(graph, &neis, (igraph_integer_t) actnode, mode);
+      n=igraph_vector_size(&neis);
+      
+      if (actdist<order-1) {
+	/* we add them to the q */
+	for (j=0; j<n; j++) {
+	  long int nei=(long int) VECTOR(neis)[j];
+	  if (added[nei] != i+1) {
+	    added[nei]=i+1;
+	    IGRAPH_CHECK(igraph_dqueue_push(&q, nei));
+	    IGRAPH_CHECK(igraph_dqueue_push(&q, actdist+1));
+	    if (actdist+1 >= mindist) { 
+	      IGRAPH_CHECK(igraph_vector_push_back(&tmp, nei));
+	    }
+	  }
+	}
+      } else {
+	/* we just count them but don't add them to q */
+	for (j=0; j<n; j++) {
+	  long int nei=(long int) VECTOR(neis)[j];
+	  if (added[nei] != i+1) {
+	    added[nei]=i+1;
+	    if (actdist+1 >= mindist) { 
+	      IGRAPH_CHECK(igraph_vector_push_back(&tmp, nei));
+	    }
+	  }
+	}
+      }
+
+    } /* while q not empty */
+
+    newv=igraph_Calloc(1, igraph_vector_t);
+    if (newv==0) {
+      IGRAPH_ERROR("Cannot calculate neighborhood", IGRAPH_ENOMEM);
+    }
+    IGRAPH_FINALLY(igraph_free, newv);
+    IGRAPH_CHECK(igraph_vector_copy(newv, &tmp));
+    VECTOR(*res)[i]=newv;
+    IGRAPH_FINALLY_CLEAN(1);
+  }
+
+  igraph_vector_destroy(&tmp);
+  igraph_vector_destroy(&neis);
+  igraph_vit_destroy(&vit);
+  igraph_dqueue_destroy(&q);
+  igraph_Free(added);
+  IGRAPH_FINALLY_CLEAN(5);
+
+  return 0;
+}
+
+
 int igraph_i_calc_cluster_degree(const igraph_t *graph,igraph_vector_t cluster, igraph_neimode_t mode)//check if graph is direcgted connected is not like that
 {
 	igraph_vector_t temp;
@@ -68,9 +170,9 @@ int igraph_expectedforce(const igraph_t *graph, igraph_vector_t *ans,
 	igraph_vector_ptr_init(&neigh2, 0);
 
 
-	igraph_neighborhood(graph,&nodes,vids, 0, mode, 0);
-	igraph_neighborhood(graph,&neigh1,vids, 1, mode, 1);
-	igraph_neighborhood(graph,&neigh2,vids, 2, mode, 2);
+	exf_igraph_neighborhood(graph,&nodes,vids, 0, mode,0);
+	exf_igraph_neighborhood(graph,&neigh1,vids, 1, mode,1);
+	exf_igraph_neighborhood(graph,&neigh2,vids, 2, mode,2);
 
 	long int i,j,k,h;
 
@@ -780,8 +882,8 @@ int igraph_expectedforce_opt(const igraph_t *graph, igraph_vector_t *ans,
 
 
 
-	igraph_neighborhood(&temp_graph,&nodes,vids, 0, mode, 0);
-	igraph_neighborhood(&temp_graph,&neigh1,vids, 1, mode, 1);
+	exf_igraph_neighborhood(&temp_graph,&nodes,vids, 0, mode,0);
+	exf_igraph_neighborhood(&temp_graph,&neigh1,vids, 1, mode,1);
 
 	long int i;
 	if (weights) {
@@ -801,7 +903,7 @@ int igraph_expectedforce_opt(const igraph_t *graph, igraph_vector_t *ans,
 		}
 	}
 	else{
-		igraph_neighborhood(&temp_graph,&neigh2,vids, 2, mode, 2);
+		exf_igraph_neighborhood(&temp_graph,&neigh2,vids, 2, mode,2);
 		igraph_degree(graph,&degrees_cache,igraph_vss_all(),mode,IGRAPH_NO_LOOPS);
 		max_degree = igraph_vector_max(&degrees_cache);
 		if(mode == IGRAPH_ALL){
@@ -857,4 +959,109 @@ int igraph_expectedforce_opt(const igraph_t *graph, igraph_vector_t *ans,
 	return IGRAPH_SUCCESS;
 
 }
+
+void print_vector(igraph_vector_t *v, FILE *f) {
+  long int i;
+  for (i=0; i<igraph_vector_size(v); i++) {
+    fprintf(f, " %f", (double) VECTOR(*v)[i]);
+  }
+  fprintf(f, "\n");
+}
+
+int main() {
+  
+  igraph_t g;
+  igraph_vector_t bet1, bet2, bet3, bet4, weights, v, v2;
+  
+  igraph_vector_init(&v, 12);
+  VECTOR(v)[0]=0; VECTOR(v)[1]=1;
+  VECTOR(v)[2]=0; VECTOR(v)[3]=2;
+  VECTOR(v)[4]=0; VECTOR(v)[5]=3;
+  VECTOR(v)[6]=2; VECTOR(v)[7]=3;
+  VECTOR(v)[8]=2; VECTOR(v)[9]=4;
+  VECTOR(v)[10]=4; VECTOR(v)[11]=5;
+
+  igraph_create(&g, &v, 0, 0);
+
+
+  /*Call expected force for all the nodes of undirected graph*/
+  igraph_vector_init(&bet1, 0);
+  igraph_expectedforce_opt(/* graph=     */ &g,
+				/* res=       */ &bet1,
+				/* vids=      */ igraph_vss_all(),
+				/* directed = */ 0,
+				/* mode=    */ IGRAPH_ALL,
+				/* weights=   */ 0,
+				/* calc_hub=  */ 1);
+  print_vector(&bet1, stdout);
+
+
+  /*Call expected force for some of the nodes of undirected graph*/
+  igraph_vector_init(&bet2, 0);
+  igraph_vector_init(&v2, 2);
+  VECTOR(v2)[0]=2;
+  VECTOR(v2)[1]=4;
+  igraph_expectedforce_opt(/* graph=     */ &g,
+  				/* res=       */ &bet2,
+  				/* vids=      */ igraph_vss_vector(&v2),
+  				/* directed = */ 0,
+  				/* mode=    */ IGRAPH_ALL,
+  				/* weights=   */ 0,
+  				/* calc_hub=  */ 1);
+  print_vector(&bet2, stdout);
+  igraph_destroy(&g);
+
+  igraph_create(&g, &v, 0, 1);
+  /*Call expected force for all the nodes of directed graph*/
+  igraph_vector_init(&bet3, 0);
+  igraph_expectedforce_opt(/* graph=     */ &g,
+  				/* res=       */ &bet3,
+  				/* vids=      */ igraph_vss_all(),
+  				/* directed = */ 0,
+  				/* mode=    */ IGRAPH_OUT,
+  				/* weights=   */ 0,
+  				/* calc_hub=  */ 1);
+  print_vector(&bet3, stdout);
+  igraph_destroy(&g);
+
+
+  igraph_vector_init(&v, 18);
+  VECTOR(v)[0]=0; VECTOR(v)[1]=1;
+  VECTOR(v)[2]=0; VECTOR(v)[3]=2;
+  VECTOR(v)[4]=0; VECTOR(v)[5]=3;
+  VECTOR(v)[6]=0; VECTOR(v)[7]=6;
+  VECTOR(v)[8]=2; VECTOR(v)[9]=3;
+  VECTOR(v)[10]=2; VECTOR(v)[11]=4;
+  VECTOR(v)[12]=3; VECTOR(v)[13]=7;
+  VECTOR(v)[14]=4; VECTOR(v)[15]=5;
+  VECTOR(v)[16]=6; VECTOR(v)[17]=7;
+
+  igraph_create(&g, &v, 0, 0);
+  /*Call expected force for all the nodes of weighted graph*/
+  igraph_vector_init(&weights,9);
+  VECTOR(weights)[0]=2; VECTOR(weights)[1]=5;
+  VECTOR(weights)[2]=4; VECTOR(weights)[3]=3;
+  VECTOR(weights)[4]=9; VECTOR(weights)[5]=6;
+  VECTOR(weights)[6]=5; VECTOR(weights)[7]=3;
+  VECTOR(weights)[8]=2;
+  igraph_vector_init(&bet4, 0);
+  igraph_expectedforce_opt(/* graph=     */ &g,
+		  	  /* res=       */ &bet4,
+			  /* vids=      */ igraph_vss_all(),
+			  /* directed = */ 0,
+			  /* mode=    */ IGRAPH_OUT,
+			  /* weights=   */ &weights,
+			  /* calc_hub=  */ 1);
+  print_vector(&bet4, stdout);
+
+  igraph_destroy(&g);
+  igraph_vector_destroy(&bet1);
+  igraph_vector_destroy(&bet2);
+  igraph_vector_destroy(&bet3);
+  igraph_vector_destroy(&bet4);
+  igraph_vector_destroy(&v);
+
+  return 0;
+}
+
 

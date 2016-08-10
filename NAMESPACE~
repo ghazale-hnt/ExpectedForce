@@ -1,4 +1,4 @@
-export(expectedforce)
+exportPattern("^[^\\.]")
 useDynLib(ExpectedForce)
 importFrom(Rcpp, evalCpp)
 import(igraph)

@@ -968,100 +968,101 @@ void print_vector(igraph_vector_t *v, FILE *f) {
   fprintf(f, "\n");
 }
 
-int main() {
-  
-  igraph_t g;
-  igraph_vector_t bet1, bet2, bet3, bet4, weights, v, v2;
-  
-  igraph_vector_init(&v, 12);
-  VECTOR(v)[0]=0; VECTOR(v)[1]=1;
-  VECTOR(v)[2]=0; VECTOR(v)[3]=2;
-  VECTOR(v)[4]=0; VECTOR(v)[5]=3;
-  VECTOR(v)[6]=2; VECTOR(v)[7]=3;
-  VECTOR(v)[8]=2; VECTOR(v)[9]=4;
-  VECTOR(v)[10]=4; VECTOR(v)[11]=5;
 
-  igraph_create(&g, &v, 0, 0);
-
-
-  /*Call expected force for all the nodes of undirected graph*/
-  igraph_vector_init(&bet1, 0);
-  igraph_expectedforce_opt(/* graph=     */ &g,
-				/* res=       */ &bet1,
-				/* vids=      */ igraph_vss_all(),
-				/* directed = */ 0,
-				/* mode=    */ IGRAPH_ALL,
-				/* weights=   */ 0,
-				/* calc_hub=  */ 1);
-  print_vector(&bet1, stdout);
-
-
-  /*Call expected force for some of the nodes of undirected graph*/
-  igraph_vector_init(&bet2, 0);
-  igraph_vector_init(&v2, 2);
-  VECTOR(v2)[0]=2;
-  VECTOR(v2)[1]=4;
-  igraph_expectedforce_opt(/* graph=     */ &g,
-  				/* res=       */ &bet2,
-  				/* vids=      */ igraph_vss_vector(&v2),
-  				/* directed = */ 0,
-  				/* mode=    */ IGRAPH_ALL,
-  				/* weights=   */ 0,
-  				/* calc_hub=  */ 1);
-  print_vector(&bet2, stdout);
-  igraph_destroy(&g);
-
-  igraph_create(&g, &v, 0, 1);
-  /*Call expected force for all the nodes of directed graph*/
-  igraph_vector_init(&bet3, 0);
-  igraph_expectedforce_opt(/* graph=     */ &g,
-  				/* res=       */ &bet3,
-  				/* vids=      */ igraph_vss_all(),
-  				/* directed = */ 0,
-  				/* mode=    */ IGRAPH_OUT,
-  				/* weights=   */ 0,
-  				/* calc_hub=  */ 1);
-  print_vector(&bet3, stdout);
-  igraph_destroy(&g);
-
-
-  igraph_vector_init(&v, 18);
-  VECTOR(v)[0]=0; VECTOR(v)[1]=1;
-  VECTOR(v)[2]=0; VECTOR(v)[3]=2;
-  VECTOR(v)[4]=0; VECTOR(v)[5]=3;
-  VECTOR(v)[6]=0; VECTOR(v)[7]=6;
-  VECTOR(v)[8]=2; VECTOR(v)[9]=3;
-  VECTOR(v)[10]=2; VECTOR(v)[11]=4;
-  VECTOR(v)[12]=3; VECTOR(v)[13]=7;
-  VECTOR(v)[14]=4; VECTOR(v)[15]=5;
-  VECTOR(v)[16]=6; VECTOR(v)[17]=7;
-
-  igraph_create(&g, &v, 0, 0);
-  /*Call expected force for all the nodes of weighted graph*/
-  igraph_vector_init(&weights,9);
-  VECTOR(weights)[0]=2; VECTOR(weights)[1]=5;
-  VECTOR(weights)[2]=4; VECTOR(weights)[3]=3;
-  VECTOR(weights)[4]=9; VECTOR(weights)[5]=6;
-  VECTOR(weights)[6]=5; VECTOR(weights)[7]=3;
-  VECTOR(weights)[8]=2;
-  igraph_vector_init(&bet4, 0);
-  igraph_expectedforce_opt(/* graph=     */ &g,
-		  	  /* res=       */ &bet4,
-			  /* vids=      */ igraph_vss_all(),
-			  /* directed = */ 0,
-			  /* mode=    */ IGRAPH_OUT,
-			  /* weights=   */ &weights,
-			  /* calc_hub=  */ 1);
-  print_vector(&bet4, stdout);
-
-  igraph_destroy(&g);
-  igraph_vector_destroy(&bet1);
-  igraph_vector_destroy(&bet2);
-  igraph_vector_destroy(&bet3);
-  igraph_vector_destroy(&bet4);
-  igraph_vector_destroy(&v);
-
-  return 0;
-}
+//int main() {
+//  
+//  igraph_t g;
+//  igraph_vector_t bet1, bet2, bet3, bet4, weights, v, v2;
+//  
+//  igraph_vector_init(&v, 12);
+//  VECTOR(v)[0]=0; VECTOR(v)[1]=1;
+//  VECTOR(v)[2]=0; VECTOR(v)[3]=2;
+//  VECTOR(v)[4]=0; VECTOR(v)[5]=3;
+//  VECTOR(v)[6]=2; VECTOR(v)[7]=3;
+// VECTOR(v)[8]=2; VECTOR(v)[9]=4;
+//  VECTOR(v)[10]=4; VECTOR(v)[11]=5;
+//
+//  igraph_create(&g, &v, 0, 0);
+//
+//
+//  /*Call expected force for all the nodes of undirected graph*/
+//  igraph_vector_init(&bet1, 0);
+//  igraph_expectedforce_opt(/* graph=     */ &g,
+//				/* res=       */ &bet1,
+//				/* vids=      */ igraph_vss_all(),
+//				/* directed = */ 0,
+//				/* mode=    */ IGRAPH_ALL,
+//				/* weights=   */ 0,
+//				/* calc_hub=  */ 1);
+//  print_vector(&bet1, stdout);
+//
+//
+//  /*Call expected force for some of the nodes of undirected graph*/
+//  igraph_vector_init(&bet2, 0);
+//  igraph_vector_init(&v2, 2);
+//  VECTOR(v2)[0]=2;
+//  VECTOR(v2)[1]=4;
+//  igraph_expectedforce_opt(/* graph=     */ &g,
+//  				/* res=       */ &bet2,
+//  				/* vids=      */ igraph_vss_vector(&v2),
+//  				/* directed = */ 0,
+//  				/* mode=    */ IGRAPH_ALL,
+//  				/* weights=   */ 0,
+//  				/* calc_hub=  */ 1);
+//  print_vector(&bet2, stdout);
+//  igraph_destroy(&g);
+//
+//  igraph_create(&g, &v, 0, 1);
+//  /*Call expected force for all the nodes of directed graph*/
+//  igraph_vector_init(&bet3, 0);
+//  igraph_expectedforce_opt(/* graph=     */ &g,
+//  				/* res=       */ &bet3,
+//  				/* vids=      */ igraph_vss_all(),
+//  				/* directed = */ 0,
+//  				/* mode=    */ IGRAPH_OUT,
+//  				/* weights=   */ 0,
+//  				/* calc_hub=  */ 1);
+//  print_vector(&bet3, stdout);
+//  igraph_destroy(&g);
+//
+//
+//  igraph_vector_init(&v, 18);
+//  VECTOR(v)[0]=0; VECTOR(v)[1]=1;
+//  VECTOR(v)[2]=0; VECTOR(v)[3]=2;
+//  VECTOR(v)[4]=0; VECTOR(v)[5]=3;
+//  VECTOR(v)[6]=0; VECTOR(v)[7]=6;
+//  VECTOR(v)[8]=2; VECTOR(v)[9]=3;
+//  VECTOR(v)[10]=2; VECTOR(v)[11]=4;
+//  VECTOR(v)[12]=3; VECTOR(v)[13]=7;
+//  VECTOR(v)[14]=4; VECTOR(v)[15]=5;
+//  VECTOR(v)[16]=6; VECTOR(v)[17]=7;
+//
+//  igraph_create(&g, &v, 0, 0);
+//  /*Call expected force for all the nodes of weighted graph*/
+//  igraph_vector_init(&weights,9);
+//  VECTOR(weights)[0]=2; VECTOR(weights)[1]=5;
+//  VECTOR(weights)[2]=4; VECTOR(weights)[3]=3;
+//  VECTOR(weights)[4]=9; VECTOR(weights)[5]=6;
+//  VECTOR(weights)[6]=5; VECTOR(weights)[7]=3;
+//  VECTOR(weights)[8]=2;
+//  igraph_vector_init(&bet4, 0);
+//  igraph_expectedforce_opt(/* graph=     */ &g,
+//		  	  /* res=       */ &bet4,
+//			  /* vids=      */ igraph_vss_all(),
+//			  /* directed = */ 0,
+//			  /* mode=    */ IGRAPH_OUT,
+//			  /* weights=   */ &weights,
+//			  /* calc_hub=  */ 1);
+//  print_vector(&bet4, stdout);
+//
+//  igraph_destroy(&g);
+//  igraph_vector_destroy(&bet1);
+//  igraph_vector_destroy(&bet2);
+//  igraph_vector_destroy(&bet3);
+//  igraph_vector_destroy(&bet4);
+//  igraph_vector_destroy(&v);
+//
+//  return 0;
+//}
 
 

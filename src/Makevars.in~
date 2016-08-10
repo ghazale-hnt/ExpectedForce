@@ -1,8 +1,8 @@
 # set by configure
 #IGRAPH_CFLAGS = @IGRAPH_CFLAGS@
-IGRAPH_LIBS   =  -ligraph
+IGRAPH_LIBS   = @IGRAPH_LIBS@
 
-PKG_CPPFLAGS = -Iinclude/igraph
+PKG_CPPFLAGS = -I../include/igraph
 PKG_LIBS = $(IGRAPH_LIBS)
 
 

@@ -7,7 +7,7 @@ Author: Ghazaleh Haratinezhad Torbati, Glenn Lawyer
 Maintainer: Ghazaleh Haratinezhad Torbati <ghazale.hnt@gmail.com>
 Description: The Expected Force (ExF) of a node measures its relevance to spreading processes on the graph by summarizing the size, connectedness, and diveristy in the node's two and three hop neighborhoods. 
 License: GPL (>= 2)
-Imports: igraph (>= 1.0.0), Rcpp (>= 0.11.6)
+Import: igraph (>= 1.0.0), Rcpp (>= 0.11.6)
 LinkingTo: Rcpp
 URL: TODO
 NeedsCompilation: yes

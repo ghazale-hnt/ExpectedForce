@@ -1,0 +1,140 @@
+#' Expected Force centrality of vertices
+#' 
+#' The Expected Force (ExF) of a node measures its relevance to spreading 
+#' processes on the graph by summarizing the size, connectedness, and diveristy
+#' in the node's two and three hop neighborhoods. 
+#' 
+#' More formally, the ExF is the (quasi) expected value of the force of 
+#' infection (FoI)in the network after two transmission events (without recovery)
+#' in an epidemic seeded from the node into an otherwise fully susceptilble 
+#' network. The expectation is calculated using the entropy of the distribution 
+#' of possible FoI values, after normalization.
+#' 
+#' Since the distribution of FoI values is also well defined for directed and 
+#' weighted graphs, the definition naturally extends to such cases. Transmission 
+#' in directed graphs can be modeled either as following in edges or out edges. 
+#' In weighted graphs, edge weights are assumed to correspond to transmission 
+#' rates along the given edge. Thus all weights must be strictly positive. An 
+#' extension to non-simple graphs (graphs with multiple or loop edges) is less 
+#' obvious, thus not implemented. One could, however, represent multiple edges 
+#' linking the same nodes as a single weighted edge.
+#' 
+#' This function can be called on the entire graph or on a subset of the verticies. 
+#' The ExF is computed independently for each node. This allows substantial speed-up 
+#' via on-the-fly computation or via parallelism. Caching of results is not yet 
+#' implemented and is thus up to the user.
+#' 
+#' The algorithm has time complexity O(n_1^2 * n_2) where n_1 and n_2 are the number 
+#' of neighbors in the first and second geodisc of the node. For most nodes, this is 
+#' quite fast. For hubs in scale-free networks, however, it can be slow. We somewhat 
+#' arbitrarily define hubs as nodes whose degree is greater than 0.6*max(degree(graph)).
+#' The ExF of such nodes is (except possibly in some pathelogical examples) greater 
+#' than the remaining network nodes, typically 1.3 times the ExF of the highest non-hub 
+#' node. To avoid confusion in the outputs, however, this implementation (if requested 
+#' to skip computation for hubs) returns the degree of the node. This creates easy to 
+#' identify outliers.
+#' 
+#' questions/comments to: \email{expectedforce@@mpi-inf.mpg.de}
+#' 
+#' 
+#' @aliases expectedforce exf
+#' @param graph The input graph
+#' @param v The vertices for which expectedforce will be calculated.
+#' @param directed Logical, whether directed or undirected graph should be considered.
+#' @param mode Character constatnt, it specifies the direction of transmission for
+#' calculating the expected force. For \sQuote{"out"} transmission flows from source
+#' to target. For \sQuote{"in"} transmission flows from target to source. For 
+#' \sQuote{"all"} transmission flows both ways along an edge. This argument is 
+#' ignored for undirected graphs.
+#' @param weights Optional positive weight vector for calculating weighted 
+#' expectedforce. If the graph has a \code{weight} edge attribute, then this is 
+#' used by default. If the graph has weights it is considered as undirected(for now).
+#' @param calc_hub Logical, whether to calculate expectedforce for hub nodes
+#' (node degree > 0.6*max_degree) or not. By default it is \code{TRUE}.
+#' @return A numeric vector with the expectedforce score for each vertex in
+#' \code{v} for \code{expectedforce}.
+#' @note expectedforce is calculated for simple graphs. In case of multiple edges
+#' it return input error.
+#' @author Ghazaleh Haratinezhad \email{ghazale.hnt@@gmail.com}
+#' @author Glenn Lawyer \email{lawyer@@mpi-inf.mpg.de}
+#' @references to be added
+#' @export
+#' @keywords graphs
+#' @examples
+#' g <- forest.fire.game(1000,fw.prob=0.25,directed=FALSE)
+#' expectedforce(g)
+#' expectedforce(g,c(2,10))
+#' expectedforce(g,weights = seq(1,ecount(g)))
+#' #' g <- forest.fire.game(1000,fw.prob=0.25,directed=TRUE)
+#' expectedforce(g,directed = TRUE)
+#' 
+expectedforce <- function(graph, v=V(graph), directed=TRUE, mode=c("all", "out", "in"),
+                weights=NULL, calc_hub= TRUE ) {
+  if (!is_igraph(graph)) {
+    stop("Not a graph object")
+  }
+  v <- as.igraph.vs(graph, v)
+  if (is.null(weights) && "weight" %in% edge_attr_names(graph)) {
+    weights <- E(graph)$weight
+  }
+  if (!is.null(weights) && any(!is.na(weights))) {
+    weights <- as.numeric(weights)
+  } else {
+    weights <- NULL
+  }
+  mode <- igraph.match.arg(mode)
+  mode <- switch(mode, "out"=1, "in"=2, "all"=3)
+  #on.exit( .Call("R_igraph_finalizer", PACKAGE="igraph") )
+  
+  res <- .Call("R_igraph_expectedforce", graph, v-1,
+               as.logical(directed), mode,weights, 
+               as.logical(calc_hub), PACKAGE="ExpectedForce")
+  
+  if (igraph_opt("add.vertex.names") && is_named(graph)) {
+    names(res) <- V(graph)$name[v]
+  }
+  
+  res
+}
+
+
+as.igraph.vs <- function(graph, v, na.ok=FALSE) {
+#  if (inherits(v, "igraph.vs") && !is.null(graph) &&
+#      !warn_version(graph)) {
+#    if (get_graph_id(graph) != get_vs_graph_id(v)) {
+#      stop("Cannot use a vertex sequence from another graph.")
+#    }
+#  }
+  if (is.character(v) && "name" %in% vertex_attr_names(graph)) {
+    v <- as.numeric(match(v, V(graph)$name))
+    if (!na.ok && any(is.na(v))) {
+      stop("Invalid vertex names")
+    }
+    v
+  } else {
+    if (is.logical(v)) {
+      res <- as.vector(V(graph))[v]
+    } else if (is.numeric(v) && any(v<0)){
+      res <- as.vector(V(graph))[v]
+    } else {
+      res <- as.numeric(v)
+    }
+    if (!na.ok && any(is.na(res))) {
+      stop("Invalid vertex name(s)")
+    }
+    res
+  }
+}
+
+igraph.match.arg <- function(arg, choices, several.ok=FALSE) {
+  if (missing(choices)) {
+    formal.args <- formals(sys.function(sys.parent()))
+    choices <- eval(formal.args[[deparse(substitute(arg))]])
+  }
+
+  arg <- tolower(arg)
+  choices <- tolower(choices)
+
+  match.arg(arg=arg, choices=choices, several.ok=several.ok)
+}
+

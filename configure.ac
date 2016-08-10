@@ -1,0 +1,8 @@
+AC_INIT([ExpectedForce])
+
+AC_CHECK_LIB(igraph, igraph_degree , [IGRAPH_LIBS="${LIBS} -ligraph"], AC_MSG_ERROR("igraph library not found"),[])
+#AC_CHECK_HEADERS(igraph/igraph.h, [IGRAPH_CFLAGS=""], AC_MSG_ERROR("igraph headers not found"), [])
+
+#AC_SUBST(IGRAPH_CFLAGS) 
+AC_SUBST(IGRAPH_LIBS)
+AC_OUTPUT(src/Makevars)
